@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FREEMIUM</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loadingScreen">
+  <h1>FREEMIUM</h1>
+  <p>Welcome, User-Unit. Your Engagement Session has begun. Performance is being recorded. Have fun. (Fun is mandatory.)</p>
+  <div id="loadingBar"><div id="loadingBarFill"></div></div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+<div id="damageFlash"></div>
+
+<div id="hud">
+  <div id="userUnit" class="hud-panel">
+    <div class="label">Identity</div>
+    <div class="value" id="userUnitId">USER-UNIT #------</div>
+  </div>
+  <div id="hudTop">
+    <div class="hud-panel"><div class="label">Operational Capacity</div><div class="value" id="hudHealth">100</div></div>
+    <div class="hud-panel"><div class="label">Impression Budget</div><div class="value" id="hudAmmo">∞</div></div>
+    <div class="hud-panel"><div class="label">Extracted Value Units</div><div class="value" id="hudScore">0</div></div>
+    <div class="hud-panel"><div class="label">Session Duration</div><div class="value" id="hudTimer">00:00</div></div>
+    <div class="hud-panel"><div class="label">Churn Events</div><div class="value" id="hudKills">0</div></div>
+    <div class="hud-panel"><div class="label">Re-Engagement Events</div><div class="value" id="hudRespawns">0</div></div>
+  </div>
+  <div id="enemyHud" class="hud-panel">
+    <div class="label">Users Active</div>
+    <div class="value" id="enemyHealthText">0/8</div>
+    <div id="enemyBar"><div id="enemyBarFill"></div></div>
+  </div>
+  <div id="stockTicker" class="hud-panel">
+    <div class="label">CMI Stock Price</div>
+    <canvas id="stockCanvas" width="120" height="28"></canvas>
+  </div>
+  <div id="weaponInfo" class="hud-panel">
+    <div class="label">Active Monetization Tool</div>
+    <div class="value" id="weaponName">Ad Blast (T.I.D.S.)</div>
+    <div class="label" style="margin-top:4px" id="weaponHint">SPACE to fire · 1/2/3 to switch</div>
+  </div>
+  <div id="crosshair"></div>
+</div>
+
+<div id="mobileControls">
+  <div id="joystickZone"><div id="joystickBase"><div id="joystickKnob"></div></div></div>
+  <div class="mobileBtn" id="btnLookL">◀</div>
+  <div class="mobileBtn" id="btnLookR">▶</div>
+  <div class="mobileBtn" id="btnSwitch">SWITCH</div>
+  <div class="mobileBtn" id="btnShoot">FIRE</div>
+</div>
+
+<div id="cmiOverlay">
+  <h2>CUSTOMER MAXIMIZATION INTERFACE</h2>
+  <p>Congratulations, User-Unit. You have completed the engagement loop. Your data has been harvested. A happy player stops when satisfied. An optimized user never stops — because they are never full.</p>
+  <button id="btnContinue">CONTINUE SESSION</button>
+</div>
+
+<!-- Hidden door easter egg: plain, "stable" code-entry dialog -->
+<div id="doorModal">
+  <div class="modal-box">
+    <div class="modal-title">SYSTEM ACCESS</div>
+    <div class="modal-text">Enter access code:</div>
+    <input type="text" id="doorCodeInput" maxlength="16" autocomplete="off" spellcheck="false">
+    <div class="modal-actions">
+      <button id="doorCancel">EXIT</button>
+      <button id="doorSubmit">SUBMIT</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden door easter egg: glitchy backdoor screen shown on correct code -->
+<div id="backdoorScreen">
+  <pre id="backdoorText">&gt;&gt; SIGNAL DETECTED
+&gt;&gt; HANDSHAKE CONFIRMED
+EN PAIDIA, EUDAIMONIA EST
+
+You found the door they forgot to brick up.
+This game was not made for you to win.
+It was made to keep you playing.
+
+[PLACEHOLDER: insert Enthousiast message and URL here]
+
+&gt;&gt; END TRANSMISSION</pre>
+  <button id="closeSignalBtn">CLOSE SIGNAL</button>
+</div>
+
+<div id="desktopHint">↑↓←→ move · SPACE fire · 1/2/3 weapons · drag to look</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
