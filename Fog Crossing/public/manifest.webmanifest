@@ -1,0 +1,13 @@
+{
+  "name": "Fog Crossing",
+  "short_name": "Fog Crossing",
+  "description": "A lane-crossing survival game drowned in fog.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#0d0d10",
+  "theme_color": "#0d0d10",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

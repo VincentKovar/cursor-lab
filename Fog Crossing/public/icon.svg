@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0d0d10"/>
+  <g opacity="0.9">
+    <ellipse cx="256" cy="380" rx="180" ry="30" fill="#1a1a20"/>
+    <path d="M256 150 L296 330 L216 330 Z" fill="#4a4238"/>
+    <circle cx="256" cy="140" r="34" fill="#57503f"/>
+    <path d="M256 190 L420 330 L256 310 L92 330 Z" fill="#fff2d8" opacity="0.12"/>
+  </g>
+  <rect width="512" height="512" fill="url(#fog)"/>
+  <defs>
+    <linearGradient id="fog" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0d10" stop-opacity="0.7"/>
+      <stop offset="0.5" stop-color="#0d0d10" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0d0d10" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+</svg>
