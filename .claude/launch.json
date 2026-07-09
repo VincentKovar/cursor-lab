@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "freemium",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", "freemium", "-p", "8421", "-c-1"],
+      "port": 8421
+    }
+  ]
+}
