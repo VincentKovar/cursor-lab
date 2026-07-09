@@ -4,7 +4,7 @@ import { InputRouter } from './input';
 import { LaneManager } from './world';
 import { Player, type DeathCause } from './player';
 import { AudioEngine } from './audio';
-import { FogDirector, Flashlight, AshField, GrainPass, StaticWall, FOG_COLOR } from './fx';
+import { FogDirector, Flashlight, AshField, GrainPass, StaticWall, Searchlight, FOG_COLOR } from './fx';
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -28,6 +28,7 @@ const fogDir = new FogDirector(scene);
 const grain = new GrainPass();
 const ash = new AshField(scene);
 const staticWall = new StaticWall(scene);
+const searchlight = new Searchlight(scene);
 
 const world = new LaneManager(scene, (Math.random() * 2 ** 31) | 0);
 const player = new Player(scene);
@@ -80,7 +81,10 @@ player.onError = (kind) => {
   cleanStreak = 0;
   if (kind === 'bump') sanityHit(-4);
   else if (kind === 'retreat') sanityHit(-2);
-  else if (kind === 'nearmiss') { sanityHit(-6); audio.nearMiss(); }
+  else if (kind === 'nearmiss') {
+    sanityHit(-6); audio.nearMiss();
+    if (Math.random() < 0.3) audio.honk();   // a startled blare out of the fog
+  }
 };
 player.onCleanHop = () => {
   cleanStreak++;
@@ -192,7 +196,7 @@ let camZ = 6;
 function render(alpha: number) {
   player.syncRender(alpha);
 
-  // soft-follow portrait camera: high, behind, looking down the corridor
+  // soft-follow landscape camera: high, behind, looking down the wide corridor
   const pz = player.rig.position.z;
   camZ += (pz + 4.1 - camZ) * 0.06;
   camera.position.set(player.rig.position.x * 0.35, 4.6, camZ);
@@ -204,6 +208,7 @@ function render(alpha: number) {
   flashlight.peer += ((peerHeld ? 1 : 0) - flashlight.peer) * 0.12;
   if (state !== 'DYING') flashlight.tick(dt, fear());
   ash.tick(dt, pz - 4);
+  searchlight.tick(dt, pz);
   // the wall only materializes when the Static is truly upon you
   const proximity = state === 'PLAYING' ? Math.max(0, 1 - (player.row - staticRow) / 1.6) : 0;
   staticWall.tick(dt, gridZ(staticRow) + 2.0, proximity);
@@ -259,7 +264,7 @@ world.ensure(0);
 
 if (import.meta.env.DEV) {
   (window as any).__fog = {
-    player, world,
+    player, world, searchlight,
     get state() { return state; },
     get sanity() { return sanity; },
     get staticRow() { return staticRow; },
@@ -271,3 +276,23 @@ rafId = requestAnimationFrame(frame);
 if ('serviceWorker' in navigator && !import.meta.env.DEV) {
   addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 }
+
+// PWA — install cue. Capture the deferred prompt and surface our own button;
+// browsers only fire this when the app is actually installable.
+const installBtn = document.getElementById('install') as HTMLButtonElement;
+let deferredInstall: any = null;
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e;
+  installBtn.hidden = false;
+});
+// keep the tap from also reaching the body handler (which starts a run)
+installBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+installBtn.addEventListener('click', async () => {
+  if (!deferredInstall) return;
+  installBtn.hidden = true;
+  deferredInstall.prompt();
+  await deferredInstall.userChoice;
+  deferredInstall = null;
+});
+addEventListener('appinstalled', () => { installBtn.hidden = true; deferredInstall = null; });

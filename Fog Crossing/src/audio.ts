@@ -132,6 +132,25 @@ export class AudioEngine {
 
   nearMiss() { this.burst(500, 0.22, 0.2, 'bandpass', 0.35); }
 
+  /** Muffled two-tone car horn — a startled blare out of the fog. */
+  honk() {
+    if (!this.ctx) return;
+    const ctx = this.ctx; const t = ctx.currentTime;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1600;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.setValueAtTime(0.3, t + 0.34);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    f.connect(g); g.connect(this.master); g.connect(this.verb);
+    // classic dissonant horn: two square tones a semitone-ish apart
+    for (const freq of [277, 370, 415]) {
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = freq;
+      const og = ctx.createGain(); og.gain.value = 0.33;
+      o.connect(og); og.connect(f); o.start(t); o.stop(t + 0.52);
+    }
+  }
+
   trainHum(on: boolean) {
     if (!this.ctx) return;
     if (on) this.humStart(); else this.humStop();

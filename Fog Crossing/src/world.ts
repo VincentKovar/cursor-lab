@@ -75,10 +75,11 @@ export function makeCar(rng: Rng): THREE.Group {
   body.position.y = 0.32;
   const cabin = jitter(box(0.92, 0.34, 0.7, bodyC), rng, 0.07);
   cabin.position.set(range(rng, -0.2, 0.2), 0.66, 0);
-  // dead headlights — dark sockets
-  const eyeL = box(0.06, 0.09, 0.14, 0x0a0a0c);
+  // dim headlights — sickly amber glow that reads through the fog
+  const lampMat = new THREE.MeshLambertMaterial({ color: 0x1a1712, emissive: 0xd9a04a });
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.11, 0.16), lampMat);
   const eyeR = eyeL.clone();
-  eyeL.position.set(0.86, 0.36, 0.2); eyeR.position.set(0.86, 0.36, -0.2);
+  eyeL.position.set(0.87, 0.36, 0.2); eyeR.position.set(0.87, 0.36, -0.2);
   g.add(body, cabin, eyeL, eyeR);
   g.rotation.y = rng() > 0.5 ? 0 : Math.PI;
   return g;

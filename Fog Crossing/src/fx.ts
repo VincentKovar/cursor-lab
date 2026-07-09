@@ -133,6 +133,75 @@ export class Flashlight {
 }
 
 // ---------------------------------------------------------------------------
+// Searchlight — a cold beam that sweeps the whole scene every 30s. Something
+// up there is looking for you. Roughly flashlight brightness where it lands.
+// ---------------------------------------------------------------------------
+export class Searchlight {
+  private spot: THREE.SpotLight;
+  private beam: THREE.Mesh;
+  private t = 24;                   // first sweep arrives ~6s in, then every 30s
+  private readonly PERIOD = 30;     // one pass every 30 seconds
+  private readonly SWEEP = 5.0;     // seconds the beam is actually crossing
+  private readonly BASE = 105;      // ~flashlight intensity once height falloff is paid
+
+  constructor(scene: THREE.Scene) {
+    const spot = new THREE.SpotLight(0xcdd6ea, 0, 34, Math.PI / 8, 0.55, 1.0);
+    spot.castShadow = false;
+    spot.position.set(0, 16, 0);
+    scene.add(spot, spot.target);
+    this.spot = spot;
+
+    // fake volumetric shaft: cone apex at the source, opening toward the ground
+    const geo = new THREE.ConeGeometry(2.3, 18, 24, 8, true);
+    geo.translate(0, -9, 0);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: { uIntensity: { value: 0 } },
+      vertexShader: /* glsl */`
+        varying vec3 vPos;
+        void main() {
+          vPos = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: /* glsl */`
+        uniform float uIntensity;
+        varying vec3 vPos;
+        void main() {
+          float along = clamp(-vPos.y / 18.0, 0.0, 1.0);
+          float fade = pow(1.0 - along, 1.3) * smoothstep(0.0, 0.08, along);
+          float a = fade * 0.09 * uIntensity;
+          gl_FragColor = vec4(0.80, 0.86, 1.0, a);
+        }`,
+    });
+    this.beam = new THREE.Mesh(geo, mat);
+    this.beam.visible = false;
+    scene.add(this.beam);
+  }
+
+  tick(dt: number, playerZ: number) {
+    this.t += dt;
+    const phase = this.t % this.PERIOD;
+    let lit = 0, sweep = 0;
+    if (phase < this.SWEEP) {
+      sweep = phase / this.SWEEP;             // 0..1 across the pass
+      lit = Math.sin(Math.PI * sweep);         // bell in / bell out
+    }
+    const x = (sweep - 0.5) * 20;              // crosses the entire lane width
+    this.spot.position.set(x, 16, playerZ - 1);
+    this.spot.target.position.set(x, 0, playerZ - 3);
+    this.spot.intensity = this.BASE * lit;
+    this.spot.visible = lit > 0.001;
+
+    this.beam.visible = lit > 0.001;
+    this.beam.position.set(x, 15, playerZ - 2);
+    (this.beam.material as THREE.ShaderMaterial).uniforms.uIntensity.value = lit;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Ash — drifting particle field that follows the camera.
 // ---------------------------------------------------------------------------
 export class AshField {
