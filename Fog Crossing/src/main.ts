@@ -309,7 +309,12 @@ addEventListener('beforeinstallprompt', (e) => {
 });
 // keep the tap from also reaching the body handler (which starts a run)
 installBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-installBtn.addEventListener('click', async () => {
+// Fire on pointerup, not click: InputRouter cancels touchstart globally to
+// kill scroll/zoom gestures during play, which per spec suppresses the
+// synthesized click that would normally follow a touch tap. Pointer events
+// aren't affected, so this is what actually fires on phones/tablets.
+installBtn.addEventListener('pointerup', async (e) => {
+  e.stopPropagation();
   if (!deferredInstall) return;
   installBtn.hidden = true;
   deferredInstall.prompt();
