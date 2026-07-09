@@ -1,17 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0d0d10"/>
-  <g opacity="0.9">
-    <ellipse cx="256" cy="380" rx="180" ry="30" fill="#1a1a20"/>
-    <path d="M256 150 L296 330 L216 330 Z" fill="#4a4238"/>
-    <circle cx="256" cy="140" r="34" fill="#57503f"/>
-    <path d="M256 190 L420 330 L256 310 L92 330 Z" fill="#fff2d8" opacity="0.12"/>
-  </g>
-  <rect width="512" height="512" fill="url(#fog)"/>
   <defs>
-    <linearGradient id="fog" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0d0d10" stop-opacity="0.7"/>
-      <stop offset="0.5" stop-color="#0d0d10" stop-opacity="0"/>
-      <stop offset="1" stop-color="#0d0d10" stop-opacity="0.8"/>
+    <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffe1ad" stop-opacity="1"/>
+      <stop offset="30%" stop-color="#ffb85e" stop-opacity="0.85"/>
+      <stop offset="70%" stop-color="#c9752f" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#c9752f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="38%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#8a8272" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#4a4238" stop-opacity="1"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.4"/>
+      <stop offset="0.5" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
     </linearGradient>
   </defs>
+
+  <!-- base -->
+  <rect width="512" height="512" fill="#0d0d10"/>
+
+  <!-- big warm glow anchors the composition -->
+  <circle cx="308" cy="316" r="170" fill="url(#lampGlow)"/>
+
+  <!-- ground shadow -->
+  <ellipse cx="248" cy="410" rx="128" ry="22" fill="#000000" opacity="0.55"/>
+
+  <!-- hooded wanderer, bold silhouette -->
+  <g>
+    <path d="M248 118 L308 400 L188 400 Z" fill="url(#rim)"/>
+    <path d="M248 118 L308 400 L262 400 Z" fill="#3a342c" opacity="0.65"/>
+    <circle cx="248" cy="98" r="46" fill="url(#rim)"/>
+    <circle cx="248" cy="98" r="46" fill="#000000" opacity="0.18"/>
+    <!-- lantern, the brightest point in the piece -->
+    <rect x="300" y="318" width="34" height="40" rx="3" fill="#5a4a26"/>
+    <rect x="305" y="324" width="24" height="28" rx="2" fill="#fff0cf"/>
+  </g>
+
+  <rect width="512" height="512" fill="url(#vignette)"/>
 </svg>

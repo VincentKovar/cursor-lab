@@ -298,27 +298,6 @@ if ('serviceWorker' in navigator && !import.meta.env.DEV) {
   });
 }
 
-// PWA — install cue. Capture the deferred prompt and surface our own button;
-// browsers only fire this when the app is actually installable.
-const installBtn = document.getElementById('install') as HTMLButtonElement;
-let deferredInstall: any = null;
-addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstall = e;
-  installBtn.hidden = false;
-});
-// keep the tap from also reaching the body handler (which starts a run)
-installBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-// Fire on pointerup, not click: InputRouter cancels touchstart globally to
-// kill scroll/zoom gestures during play, which per spec suppresses the
-// synthesized click that would normally follow a touch tap. Pointer events
-// aren't affected, so this is what actually fires on phones/tablets.
-installBtn.addEventListener('pointerup', async (e) => {
-  e.stopPropagation();
-  if (!deferredInstall) return;
-  installBtn.hidden = true;
-  deferredInstall.prompt();
-  await deferredInstall.userChoice;
-  deferredInstall = null;
-});
-addEventListener('appinstalled', () => { installBtn.hidden = true; deferredInstall = null; });
+// PWA — install prompt is left to the browser's own UI (Chrome's install
+// banner/mini-infobar) rather than a custom button; we don't intercept or
+// preventDefault() beforeinstallprompt.

@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
   <title>Fog Crossing</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -80,18 +80,6 @@
     @media (orientation: portrait) and (max-width: 600px) {
       #rotate { display: flex; }
     }
-
-    #install {
-      position: fixed; left: 50%; transform: translateX(-50%);
-      bottom: max(20px, env(safe-area-inset-bottom));
-      z-index: 20; pointer-events: auto; cursor: pointer;
-      background: rgba(20,22,28,0.55); color: #d3d8e2;
-      border: 1px solid rgba(160,170,190,0.35); border-radius: 999px;
-      padding: 11px 24px; font-family: inherit; font-size: 13px;
-      letter-spacing: 0.2em; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
-      box-shadow: 0 0 24px rgba(150,160,190,0.15);
-    }
-    #install[hidden] { display: none; }
   </style>
 </head>
 <body>
@@ -120,8 +108,6 @@
   </div>
 
   <div id="rotate">turn your device sideways<br/>the fog waits in the wide dark</div>
-
-  <button id="install" hidden>⤓&nbsp;&nbsp;INSTALL</button>
 
   <script type="module" src="./src/main.ts"></script>
 </body>

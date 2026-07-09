@@ -1,7 +1,10 @@
 // Fog Crossing service worker — precache-everything, atomic swap.
 // Bump VERSION on every deploy that should reach installed players promptly.
-const VERSION = 'fog-crossing-v2';
-const PRECACHE = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+const VERSION = 'fog-crossing-v3';
+const PRECACHE = [
+  './', './index.html', './manifest.webmanifest',
+  './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
