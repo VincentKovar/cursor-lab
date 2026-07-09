@@ -274,7 +274,28 @@ rafId = requestAnimationFrame(frame);
 
 // PWA — offline shell (production only; dev server owns the scope in dev)
 if ('serviceWorker' in navigator && !import.meta.env.DEV) {
-  addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+  addEventListener('load', async () => {
+    const sw = navigator.serviceWorker;
+    // A controller already present means this page's own assets came from a
+    // prior install — any *later* controllerchange is a genuine new version
+    // taking over, so reload to pick it up. A fresh install shouldn't reload.
+    const hadController = !!sw.controller;
+    const reg = await sw.register('./sw.js');
+
+    let reloaded = false;
+    sw.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+
+    // players often leave the tab open for a long session — check for a
+    // fresh deploy each time they come back so updates land without a
+    // manual cache clear.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) reg.update();
+    });
+  });
 }
 
 // PWA — install cue. Capture the deferred prompt and surface our own button;
