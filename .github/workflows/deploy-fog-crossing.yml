@@ -1,10 +1,8 @@
-name: Deploy Fog Crossing
+name: Deploy Site
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'Fog Crossing/**'
   workflow_dispatch:
 
 permissions:
@@ -28,18 +26,26 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Install Fog Crossing dependencies
         working-directory: Fog Crossing
         run: npm install
 
-      - name: Build
+      - name: Build Fog Crossing
         working-directory: Fog Crossing
         run: npm run build
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r "Fog Crossing/dist" "site/Fog Crossing"
+          cp -r Pacoom site/Pacoom
+          cp -r freemium site/freemium
+          cp -r freemium2 site/freemium2
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'Fog Crossing/dist'
+          path: site
 
   deploy:
     needs: build
