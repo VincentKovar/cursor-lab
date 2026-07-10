@@ -42,6 +42,10 @@ const MAZE = HALF.map(row => {
 });
 const ROWS = MAZE.length, COLS = MAZE[0].length;
 const CELL = 4, WALL_H = 5;
+// interior bounds (cell centers of the innermost walkable ring) — a hard backstop
+// that keeps ghosts from ever leaving the maze even if grid logic hiccups.
+const MAZE_MIN_X = (1 - COLS / 2 + 0.5) * CELL, MAZE_MAX_X = (COLS - 2 - COLS / 2 + 0.5) * CELL;
+const MAZE_MIN_Z = (1 - ROWS / 2 + 0.5) * CELL, MAZE_MAX_Z = (ROWS - 2 - ROWS / 2 + 0.5) * CELL;
 
 const isWall = (r, c) => r < 0 || c < 0 || r >= ROWS || c >= COLS || MAZE[r][c] === '#';
 const cellToWorld = (r, c) => new THREE.Vector3((c - COLS / 2 + 0.5) * CELL, 0, (r - ROWS / 2 + 0.5) * CELL);
@@ -136,6 +140,28 @@ const AudioSys = {
     const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
     o.connect(f); f.connect(g); g.connect(this.master);
     o.start(t); o.stop(t + 0.4);
+  },
+  grunt() {
+    // short pained "unh" when the player smacks a wall
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(165, t);
+    o.frequency.exponentialRampToValueAtTime(78, t + 0.14);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
+    o.connect(f); f.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + 0.2);
+    // breathy exhale
+    const n = this.ctx.createBufferSource(); n.buffer = this.noiseBuf();
+    const nf = this.ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 520; nf.Q.value = 1.2;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.12, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    n.connect(nf); nf.connect(ng); ng.connect(this.master);
+    n.start(t); n.stop(t + 0.16);
   },
   ghostDie() {
     const t = this.ctx.currentTime;
@@ -426,12 +452,21 @@ cores.forEach(core => {
 // ============================================================
 // GHOSTS — cyber-demons
 // ============================================================
+// First 4 are active from the start. The last 3 are reinforcements that join
+// the hunt as the player clears the maze (50% / 75% / 100% of the pellets).
 const GHOST_DEFS = [
   { name: 'BLINKY', color: 0xff2222, chase: 1.0 },   // pure hunter
   { name: 'PINKY', color: 0xff44cc, chase: 0.85 },   // ambusher (targets ahead)
   { name: 'INKY', color: 0x22ddff, chase: 0.75 },
   { name: 'CLYDE', color: 0xff9922, chase: 0.6 },
+  { name: 'SPECTRE', color: 0x88ff44, chase: 0.9 },  // reinforcement @ 50%
+  { name: 'WRAITH', color: 0xff5500, chase: 0.95 },  // reinforcement @ 75%
+  { name: 'REAPER', color: 0xaa00ff, chase: 1.0 },   // reinforcement @ 100%
 ];
+const BASE_GHOSTS = 4;
+// Chase-commitment multiplier: ghosts ease off (drop to 0.92x speed) less often,
+// so they pursue 18% more relentlessly. Capped at a certainty of 1.0.
+const AGGRO = 1.18;
 const FRIGHT_COLOR = 0x2244ff;
 
 function buildGhostMesh(color) {
@@ -486,9 +521,10 @@ function buildGhostMesh(color) {
 
 const trailGeo = new THREE.PlaneGeometry(0.7, 0.7);
 class Ghost {
-  constructor(def, spawn) {
+  constructor(def, spawn, active = true) {
     this.def = def;
     this.spawn = spawn.clone();
+    this.active = active; // reinforcements start inactive until the maze is cleared
     const { grp, mat, fright } = buildGhostMesh(def.color);
     this.mesh = grp; this.mat = mat; this.frightMesh = fright;
     this.light = new THREE.PointLight(def.color, 5, 12, 1.8);
@@ -497,15 +533,22 @@ class Ghost {
     this.dir = new THREE.Vector3(1, 0, 0);
     this.trail = [];
     this.trailClock = 0;
+    this.lastSafe = this.spawn.clone();
     this.reset();
   }
   reset() {
     this.pos = this.spawn.clone();
+    this.lastSafe = this.spawn.clone();
     this.state = 'chase'; // chase | fright | dead
     this.deadTimer = 0;
     this.speed = 3.4;
-    this.mesh.visible = true;
+    this.mesh.visible = this.active;
     this.applyLook(false);
+  }
+  activate() {
+    this.active = true;
+    this.reset();
+    spawnExplosion(this.spawn.clone().setY(1.1), this.def.color, 24, 6);
   }
   applyLook(frightened) {
     if (frightened) {
@@ -538,16 +581,20 @@ class Ghost {
       if (this.deadTimer <= 0) this.reset();
       return;
     }
-    const speed = this.state === 'fright' ? 2.1 : this.speed * (Math.random() < this.def.chase ? 1 : 0.92);
+    const commit = Math.min(1, this.def.chase * AGGRO); // +18% chase commitment
+    const speed = this.state === 'fright' ? 2.1 : this.speed * (Math.random() < commit ? 1 : 0.92);
     const cell = worldToCell(this.pos);
 
-    // self-heal: if we've somehow ended up off-grid or inside a wall, snap back to spawn
+    // self-heal: if we've somehow ended up off-grid or inside a wall, snap back to
+    // the last cell we knew was walkable (falls back to spawn) so ghosts can never
+    // leak out of the maze.
     if (isWall(cell.r, cell.c)) {
-      this.pos.copy(this.spawn);
+      this.pos.copy(this.lastSafe);
       this.dir.set(1, 0, 0);
       this.mesh.position.set(this.pos.x, 1.1, this.pos.z);
       return;
     }
+    this.lastSafe.copy(this.pos);
 
     const center = cellToWorld(cell.r, cell.c);
     const distToCenter = Math.hypot(this.pos.x - center.x, this.pos.z - center.z);
@@ -590,6 +637,9 @@ class Ghost {
     } else {
       this.pos.copy(nextPos);
     }
+    // hard containment: clamp to the interior of the maze as an absolute backstop
+    this.pos.x = Math.max(MAZE_MIN_X, Math.min(MAZE_MAX_X, this.pos.x));
+    this.pos.z = Math.max(MAZE_MIN_Z, Math.min(MAZE_MAX_Z, this.pos.z));
 
     // float + face movement
     const bobY = 1.1 + Math.sin(t * 3 + this.def.color) * 0.18;
@@ -638,10 +688,102 @@ class Ghost {
   }
 }
 
-// spawn 4 ghosts on the G cells (2 cells -> mirrored = 4)
+// Build all 7 ghosts on the G cells. The first BASE_GHOSTS are active immediately;
+// the rest are reinforcements that lie dormant until the player clears the maze.
 const ghosts = GHOST_DEFS.map((def, i) => new Ghost(def, ghostSpawns[i % ghostSpawns.length].clone().add(
   new THREE.Vector3((i % 2) * 1.2 - 0.6, 0, Math.floor(i / 2) * 1.2 - 0.6)
-)));
+), i < BASE_GHOSTS));
+
+// ============================================================
+// EXIT DOOR — a glowing yellow door that appears once the maze is 100% cleared.
+// Reaching it wins the level.
+// ============================================================
+const DOOR_W = 2.0, DOOR_H = 3.6;
+const exit = {
+  active: false,
+  group: null,
+  pos: new THREE.Vector3(),   // world position of the door face
+  cell: { r: 0, c: 0 },       // corridor cell in front of the door
+  glowMat: null,
+  light: null,
+};
+function buildDoor() {
+  const grp = new THREE.Group();
+  // frame
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1206, metalness: 0.8, roughness: 0.4 });
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W + 0.4, DOOR_H + 0.4, 0.3), frameMat);
+  grp.add(frame);
+  // glowing panel
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0xffe93b, emissive: 0xffcc00, emissiveIntensity: 2.4, metalness: 0.3, roughness: 0.2,
+  });
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(DOOR_W, DOOR_H, 0.18), glowMat);
+  panel.position.z = 0.12;
+  grp.add(panel);
+  // vertical seam + hardware so it reads as a real door
+  const seamMat = new THREE.MeshBasicMaterial({ color: 0x2a1e00 });
+  const seam = new THREE.Mesh(new THREE.BoxGeometry(0.06, DOOR_H - 0.2, 0.02), seamMat);
+  seam.position.z = 0.22;
+  grp.add(seam);
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.3 }));
+  handle.position.set(DOOR_W * 0.3, 0, 0.24);
+  grp.add(handle);
+  // EXIT chevrons above the door
+  const chevMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0 });
+  for (let i = 0; i < 3; i++) {
+    const chev = new THREE.Mesh(new THREE.BoxGeometry(0.5 - i * 0.12, 0.08, 0.05), chevMat);
+    chev.position.set(0, DOOR_H / 2 + 0.35 + i * 0.16, 0.25);
+    grp.add(chev);
+  }
+  const light = new THREE.PointLight(0xffdd44, 0, 16, 1.6);
+  light.position.z = 1.0;
+  grp.add(light);
+  grp.visible = false;
+  scene.add(grp);
+  exit.group = grp; exit.glowMat = glowMat; exit.light = light;
+}
+buildDoor();
+
+// Candidate outer-boundary wall cells whose inward neighbour is a corridor, so
+// the door reads as a genuine way *out* of the maze.
+function exitCandidates() {
+  const out = [];
+  const push = (wr, wc, cr, cc) => {
+    if (isWall(wr, wc) && !isWall(cr, cc)) out.push({ wr, wc, cr, cc });
+  };
+  for (let c = 1; c < COLS - 1; c++) { push(0, c, 1, c); push(ROWS - 1, c, ROWS - 2, c); }
+  for (let r = 1; r < ROWS - 1; r++) { push(r, 0, r, 1); push(r, COLS - 1, r, COLS - 2); }
+  return out;
+}
+function placeExit() {
+  const cands = exitCandidates();
+  const pick = cands[Math.floor(Math.random() * cands.length)];
+  const wallW = cellToWorld(pick.wr, pick.wc);
+  const corrW = cellToWorld(pick.cr, pick.cc);
+  // door sits on the wall face between the wall cell and the corridor cell
+  exit.pos.set((wallW.x + corrW.x) / 2, DOOR_H / 2, (wallW.z + corrW.z) / 2);
+  exit.cell = { r: pick.cr, c: pick.cc };
+  exit.group.position.copy(exit.pos);
+  // nudge the door a hair into the corridor and face it toward the player's path
+  const nrm = new THREE.Vector3(corrW.x - wallW.x, 0, corrW.z - wallW.z).normalize();
+  exit.group.position.addScaledVector(nrm, 0.06);
+  exit.group.lookAt(corrW.x, DOOR_H / 2, corrW.z);
+}
+function openExit() {
+  if (exit.active) return;
+  placeExit();
+  exit.active = true;
+  exit.group.visible = true;
+  document.getElementById('exit-panel').classList.remove('hidden');
+  flashMsg('THE MAZE OPENS — FIND THE EXIT');
+}
+function closeExit() {
+  exit.active = false;
+  if (exit.group) exit.group.visible = false;
+  const panel = document.getElementById('exit-panel');
+  if (panel) panel.classList.add('hidden');
+}
 
 // ============================================================
 // PARTICLES (explosions / sparks)
@@ -736,7 +878,10 @@ const player = {
   invuln: 0,
   fireCooldown: 0,
   recoil: 0,
+  bumpCooldown: 0,
 };
+// ~6 cm bounce-back when the player smacks a wall (world units ≈ metres)
+const WALL_BOUNCE = 0.06;
 const keys = {};
 addEventListener('keydown', e => { keys[e.code] = true; });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -764,8 +909,21 @@ function moveWithCollision(dt) {
     player.pos.x = nx; player.pos.z = nz;
     return true;
   };
-  tryAxis(move.x, 0);
-  tryAxis(0, move.z);
+  const movedX = tryAxis(move.x, 0);
+  const movedZ = tryAxis(0, move.z);
+
+  // wall bump: an attempted move was blocked by a wall this frame
+  const bumpedX = move.x !== 0 && !movedX;
+  const bumpedZ = move.z !== 0 && !movedZ;
+  if (bumpedX || bumpedZ) {
+    // bounce ~6 cm back off the wall on the blocked axis/axes
+    if (bumpedX) player.pos.x -= Math.sign(move.x) * WALL_BOUNCE;
+    if (bumpedZ) player.pos.z -= Math.sign(move.z) * WALL_BOUNCE;
+    if (player.bumpCooldown <= 0) {
+      AudioSys.grunt();
+      player.bumpCooldown = 0.45; // don't machine-gun the grunt while sliding along a wall
+    }
+  }
   return moving;
 }
 
@@ -802,7 +960,7 @@ function shoot() {
   // check ghosts (sphere test along ray)
   let hitGhost = null, hitDist = Infinity;
   for (const g of ghosts) {
-    if (g.state === 'dead') continue;
+    if (!g.active || g.state === 'dead') continue;
     const toG = g.mesh.position.clone().sub(camera.position);
     const proj = toG.dot(dir);
     if (proj < 0 || proj > 35) continue;
@@ -832,8 +990,25 @@ function shoot() {
 // ============================================================
 // GAME STATE / POWER MODE
 // ============================================================
-const game = { state: 'title', pelletsLeft: pellets.length, time: 0 };
+const game = { state: 'title', pelletsLeft: pellets.length, time: 0, reinforced: [false, false, false] };
 const powerMode = { active: false, timer: 0 };
+
+// Reinforcement ghosts + the level exit trigger as the maze empties out.
+function onPelletCleared() {
+  const cleared = (pellets.length - game.pelletsLeft) / pellets.length;
+  if (cleared >= 0.5 && !game.reinforced[0]) {
+    game.reinforced[0] = true; ghosts[BASE_GHOSTS].activate();
+    flashMsg('REINFORCEMENT INBOUND');
+  }
+  if (cleared >= 0.75 && !game.reinforced[1]) {
+    game.reinforced[1] = true; ghosts[BASE_GHOSTS + 1].activate();
+    flashMsg('ANOTHER HUNTER JOINS');
+  }
+  if (game.pelletsLeft <= 0 && !game.reinforced[2]) {
+    game.reinforced[2] = true; ghosts[BASE_GHOSTS + 2].activate();
+    openExit(); // maze is empty — the win is now reaching the door
+  }
+}
 
 function activatePower() {
   powerMode.active = true;
@@ -891,11 +1066,13 @@ function endGame(won) {
 function resetGame() {
   player.pos.copy(playerSpawn);
   player.health = 100; player.score = 0;
-  player.yaw = Math.PI; player.pitch = 0; player.invuln = 0;
+  player.yaw = Math.PI; player.pitch = 0; player.invuln = 0; player.bumpCooldown = 0;
   pellets.forEach(p => (p.alive = true));
   cores.forEach(c => { c.alive = true; c.mesh.visible = true; c.light.intensity = 8; });
-  ghosts.forEach(g => g.reset());
+  ghosts.forEach((g, i) => { g.active = i < BASE_GHOSTS; g.reset(); });
   game.pelletsLeft = pellets.length;
+  game.reinforced = [false, false, false];
+  closeExit();
   endPower();
   updateHUD();
 }
@@ -909,6 +1086,7 @@ const hudEls = {
   pellets: document.getElementById('pellet-count'),
   score: document.getElementById('score-value'),
   powerFill: document.getElementById('power-fill'),
+  exitDist: document.getElementById('exit-dist'),
 };
 function updateHUD() {
   hudEls.health.textContent = `${Math.round(player.health)}%`;
@@ -961,13 +1139,36 @@ function drawMinimap() {
   }
   // ghosts
   for (const g of ghosts) {
-    if (g.state === 'dead') continue;
+    if (!g.active || g.state === 'dead') continue;
     const gc = worldToCell(g.pos);
     if (Math.abs(gc.r - pc.r) > radius || Math.abs(gc.c - pc.c) > radius) continue;
     const [x, y] = toScreen(gc.c + (g.pos.x / CELL + COLS / 2 - gc.c - 0.5), gc.r + (g.pos.z / CELL + ROWS / 2 - gc.r - 0.5));
     mm.fillStyle = g.state === 'fright' ? '#4466ff' : '#' + g.def.color.toString(16).padStart(6, '0');
     mm.beginPath(); mm.arc(x, y, 3.5, 0, 7); mm.fill();
   }
+  // exit door: pulsing yellow marker, clamped to the minimap edge with an arrow
+  // when it's beyond view so the player can always navigate toward it
+  if (exit.active) {
+    const exCol = exit.pos.x / CELL + COLS / 2, exRow = exit.pos.z / CELL + ROWS / 2;
+    let vc = exCol - px, vr = exRow - pz;
+    const mag = Math.max(Math.abs(vc), Math.abs(vr));
+    const clamped = mag > radius;
+    if (clamped) { const k = radius / mag; vc *= k; vr *= k; }
+    const x = (vc + radius + 0.5) * scale, y = (vr + radius + 0.5) * scale;
+    const pulse = 3 + Math.sin(game.time * 6) * 1.4;
+    mm.fillStyle = clamped ? '#ffd21a' : '#ffe93b';
+    mm.shadowColor = '#ffe93b'; mm.shadowBlur = 8;
+    if (clamped) {
+      const ang = Math.atan2(vr, vc);
+      mm.save(); mm.translate(x, y); mm.rotate(ang);
+      mm.beginPath(); mm.moveTo(6, 0); mm.lineTo(-4, 4); mm.lineTo(-4, -4); mm.closePath(); mm.fill();
+      mm.restore();
+    } else {
+      mm.fillRect(x - pulse, y - pulse, pulse * 2, pulse * 2);
+    }
+    mm.shadowBlur = 0;
+  }
+
   // player arrow
   const cxy = W / 2;
   mm.save();
@@ -996,6 +1197,7 @@ function tick() {
     const moving = moveWithCollision(dt);
     player.invuln = Math.max(0, player.invuln - dt);
     player.fireCooldown = Math.max(0, player.fireCooldown - dt);
+    player.bumpCooldown = Math.max(0, player.bumpCooldown - dt);
     player.recoil = Math.max(0, player.recoil - dt * 4);
 
     // camera + head bob
@@ -1025,7 +1227,7 @@ function tick() {
         player.score += 10;
         AudioSys.blip();
         updateHUD();
-        if (game.pelletsLeft <= 0) endGame(true);
+        onPelletCleared();
       }
     }
     // core pickup
@@ -1049,11 +1251,22 @@ function tick() {
     }
     // ghosts
     for (const g of ghosts) {
+      if (!g.active) continue;
       g.update(dt, t, player, powerMode);
       if (g.state === 'chase') {
         const d = g.pos.distanceTo(player.pos);
         if (d < 1.1) damagePlayer(20, g.pos);
       }
+    }
+
+    // exit door: pulse it, report distance to the HUD, and check for reaching it
+    if (exit.active) {
+      exit.glowMat.emissiveIntensity = 2.0 + Math.sin(t * 5) * 1.2;
+      exit.light.intensity = 5 + Math.sin(t * 5) * 3;
+      const dx = exit.pos.x - player.pos.x, dz = exit.pos.z - player.pos.z;
+      const dist = Math.hypot(dx, dz);
+      hudEls.exitDist.textContent = `${Math.round(dist)} M`;
+      if (dist < 1.6) endGame(true);
     }
   }
 
@@ -1111,7 +1324,17 @@ tick();
 
 // debug/testing hook
 window.__pacoom = {
-  game, player, ghosts, powerMode, pellets, cores, keys,
+  game, player, ghosts, powerMode, pellets, cores, keys, exit,
   startGame, activatePower, shoot, tick, camera,
+  openExit, onPelletCleared,
   forceLock: (v) => { locked = v; },
+  clearPellets: (frac = 1) => {
+    // testing helper: clear a fraction of the maze and fire the resulting triggers
+    for (const p of pellets) {
+      if (!p.alive) continue;
+      if ((pellets.length - game.pelletsLeft) / pellets.length >= frac) break;
+      p.alive = false; game.pelletsLeft--;
+    }
+    onPelletCleared(); updateHUD();
+  },
 };
