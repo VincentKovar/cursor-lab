@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "asteroid-belt",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", "Asteroid-Belt", "-p", "8422", "-c-1"],
+      "port": 8422
+    },
+    {
       "name": "freemium",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["http-server", "freemium", "-p", "8421", "-c-1"],

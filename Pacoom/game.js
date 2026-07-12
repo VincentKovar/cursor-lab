@@ -163,6 +163,56 @@ const AudioSys = {
     n.connect(nf); nf.connect(ng); ng.connect(this.master);
     n.start(t); n.stop(t + 0.16);
   },
+  growl(proximity = 1) {
+    // low guttural demon growl — plays when a ghost is close to the player,
+    // even through walls, so proximity is felt without needing line of sight.
+    // `proximity` in [0,1]: 1 = right on top of the player, 0 = at growl range.
+    const t = this.ctx.currentTime;
+    const vol = 0.12 + proximity * 0.22;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(58 + proximity * 20, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.08);
+    g.gain.setValueAtTime(vol, t + 0.28);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    // tremolo growl texture
+    const lfo = this.ctx.createOscillator(), lg = this.ctx.createGain();
+    lfo.frequency.value = 18; lg.gain.value = 0.08;
+    lfo.connect(lg); lg.connect(g.gain); lfo.start(t); lfo.stop(t + 0.5);
+    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260;
+    o.connect(f); f.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + 0.52);
+    // gravelly noise bed
+    const n = this.ctx.createBufferSource(); n.buffer = this.noiseBuf();
+    const nf = this.ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 200; nf.Q.value = 0.8;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(vol * 0.5, t + 0.08);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
+    n.connect(nf); nf.connect(ng); ng.connect(this.master);
+    n.start(t); n.stop(t + 0.5);
+  },
+  klaxon() {
+    // 1.5s two-tone alarm when the exit door appears
+    const t = this.ctx.currentTime;
+    const dur = 1.5, toneLen = 0.28;
+    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2200;
+    const master = this.ctx.createGain(); master.gain.value = 0.3;
+    f.connect(master); master.connect(this.master);
+    for (let ti = 0; ti * toneLen < dur; ti++) {
+      const start = t + ti * toneLen;
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = 'sawtooth';
+      o.frequency.value = ti % 2 === 0 ? 880 : 660;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(1, start + 0.02);
+      g.gain.setValueAtTime(1, start + toneLen - 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + toneLen);
+      o.connect(g); g.connect(f);
+      o.start(start); o.stop(start + toneLen);
+    }
+  },
   ghostDie() {
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
@@ -465,8 +515,14 @@ const GHOST_DEFS = [
 ];
 const BASE_GHOSTS = 4;
 // Chase-commitment multiplier: ghosts ease off (drop to 0.92x speed) less often,
-// so they pursue 18% more relentlessly. Capped at a certainty of 1.0.
-const AGGRO = 1.18;
+// so they pursue more relentlessly. Stacked: +18%, then another +15% on top
+// (1.18 * 1.15 ≈ +35.7% total). Commitment probability is still capped at 1.0.
+const AGGRO = 1.18 * 1.15;
+// Base chase speed, also boosted 15% on top of the original 3.4 units/s.
+const CHASE_SPEED = 3.4 * 1.15;
+// World-unit radius within which a hunting ghost growls at the player, even
+// through walls — proximity dread without needing line of sight.
+const GROWL_RANGE = CELL * 3;
 const FRIGHT_COLOR = 0x2244ff;
 
 function buildGhostMesh(color) {
@@ -534,6 +590,7 @@ class Ghost {
     this.trail = [];
     this.trailClock = 0;
     this.lastSafe = this.spawn.clone();
+    this.growlCooldown = 0;
     this.reset();
   }
   reset() {
@@ -541,7 +598,8 @@ class Ghost {
     this.lastSafe = this.spawn.clone();
     this.state = 'chase'; // chase | fright | dead
     this.deadTimer = 0;
-    this.speed = 3.4;
+    this.speed = CHASE_SPEED;
+    this.growlCooldown = 0;
     this.mesh.visible = this.active;
     this.applyLook(false);
   }
@@ -580,6 +638,17 @@ class Ghost {
       this.deadTimer -= dt;
       if (this.deadTimer <= 0) this.reset();
       return;
+    }
+    // proximity growl: hunting ghosts growl as they close in, audible through
+    // walls (no line-of-sight check) so the player feels the threat before seeing it.
+    this.growlCooldown = Math.max(0, this.growlCooldown - dt);
+    if (this.state === 'chase' && this.growlCooldown <= 0) {
+      const distToPlayer = this.pos.distanceTo(player.pos);
+      if (distToPlayer < GROWL_RANGE) {
+        const proximity = 1 - distToPlayer / GROWL_RANGE;
+        AudioSys.growl(proximity);
+        this.growlCooldown = 2.2 - proximity * 1.5; // closer -> growls more often
+      }
     }
     const commit = Math.min(1, this.def.chase * AGGRO); // +18% chase commitment
     const speed = this.state === 'fright' ? 2.1 : this.speed * (Math.random() < commit ? 1 : 0.92);
@@ -777,6 +846,7 @@ function openExit() {
   exit.group.visible = true;
   document.getElementById('exit-panel').classList.remove('hidden');
   flashMsg('THE MAZE OPENS — FIND THE EXIT');
+  AudioSys.klaxon();
 }
 function closeExit() {
   exit.active = false;
@@ -867,6 +937,8 @@ gun.add(muzzleFlash);
 // ============================================================
 // PLAYER
 // ============================================================
+// Ghost contact damage, 15% deadlier than the original 20.
+const GHOST_DAMAGE = 20 * 1.15;
 const player = {
   pos: playerSpawn.clone(),
   vel: new THREE.Vector3(),
@@ -1255,7 +1327,7 @@ function tick() {
       g.update(dt, t, player, powerMode);
       if (g.state === 'chase') {
         const d = g.pos.distanceTo(player.pos);
-        if (d < 1.1) damagePlayer(20, g.pos);
+        if (d < 1.1) damagePlayer(GHOST_DAMAGE, g.pos);
       }
     }
 
@@ -1324,7 +1396,7 @@ tick();
 
 // debug/testing hook
 window.__pacoom = {
-  game, player, ghosts, powerMode, pellets, cores, keys, exit,
+  game, player, ghosts, powerMode, pellets, cores, keys, exit, AudioSys,
   startGame, activatePower, shoot, tick, camera,
   openExit, onPelletCleared,
   forceLock: (v) => { locked = v; },
