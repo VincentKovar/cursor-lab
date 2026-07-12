@@ -25,9 +25,10 @@ Three.js loads from the jsDelivr CDN, so an internet connection is required on f
 ## How it works
 
 - Collect all **235 plasma spheres** in the neon labyrinth to win.
-- Four **cyber-demons** — Blinky (red, relentless hunter), Pinky (pink, ambushes ahead of you), Inky (cyan, erratic), Clyde (orange, cowardly) — float through the maze leaving neon trails. Contact costs 20% health.
+- Four to Seven **cyber-demons** — Blinky (red, relentless hunter), Pinky (pink, ambushes ahead of you), Inky (cyan, erratic), Clyde (orange, aggro) as well as later arrivals Wraith and Reaper— float through the maze leaving neon trails. Contact costs 23% health.
 - Your shotgun can't hurt them... until you grab a **Super-Charged Plasma Core** (the pulsing blue icosahedra in the four corners). The lights strobe red, an industrial metal riff kicks in, and for 10 seconds the demons turn blue, fractured, and killable (+200 each). They respawn from the central pen — stay moving.
 - HUD: health (bottom-left), pellets remaining + score (bottom-right), live tactical minimap (top-center).
+- When you have collected all the pellets, you will hear a klaxon telling you to exit the level through the yellow glowing door.
 
 ## Tech
 
