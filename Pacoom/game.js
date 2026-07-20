@@ -130,16 +130,29 @@ const AudioSys = {
     p.start(t + 0.3); p.stop(t + 0.5);
   },
   hurt() {
+    // pained "yelp" — quick upward flick then a hard downward cry, plus a
+    // sharp impact transient up front, so demon damage reads distinctly more
+    // "ouchy" than the plain wall-bump grunt() below.
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = 'sawtooth';
-    o.frequency.setValueAtTime(120, t);
-    o.frequency.exponentialRampToValueAtTime(45, t + 0.3);
-    g.gain.setValueAtTime(0.4, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+    o.frequency.setValueAtTime(280, t);
+    o.frequency.exponentialRampToValueAtTime(460, t + 0.035);
+    o.frequency.exponentialRampToValueAtTime(85, t + 0.32);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.45, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
     o.connect(f); f.connect(g); g.connect(this.master);
     o.start(t); o.stop(t + 0.4);
+    // sharp noise punch on impact
+    const n = this.ctx.createBufferSource(); n.buffer = this.noiseBuf();
+    const nf = this.ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 900; nf.Q.value = 1.4;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.28, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    n.connect(nf); nf.connect(ng); ng.connect(this.master);
+    n.start(t); n.stop(t + 0.09);
   },
   grunt() {
     // short pained "unh" when the player smacks a wall
@@ -162,6 +175,23 @@ const AudioSys = {
     ng.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
     n.connect(nf); nf.connect(ng); ng.connect(this.master);
     n.start(t); n.stop(t + 0.16);
+  },
+  clone() {
+    // digital "split" chirp — two detuned square blips, so a duplication
+    // reads distinctly from the plain immune-hit feedback.
+    const t = this.ctx.currentTime;
+    [0, 7].forEach((detune, i) => {
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = 'square';
+      o.detune.value = detune;
+      o.frequency.setValueAtTime(520, t + i * 0.03);
+      o.frequency.exponentialRampToValueAtTime(1400, t + i * 0.03 + 0.14);
+      g.gain.setValueAtTime(0.0001, t + i * 0.03);
+      g.gain.exponentialRampToValueAtTime(i === 0 ? 0.22 : 0.16, t + i * 0.03 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.03 + 0.22);
+      o.connect(g); g.connect(this.master);
+      o.start(t + i * 0.03); o.stop(t + i * 0.03 + 0.25);
+    });
   },
   growl(proximity = 1) {
     // low guttural demon growl — plays when a ghost is close to the player,
@@ -504,28 +534,60 @@ cores.forEach(core => {
 // ============================================================
 // First 4 are active from the start. The last 3 are reinforcements that join
 // the hunt as the player clears the maze (50% / 75% / 100% of the pellets).
+// behavior tags layer a second AI trait on top of the base chase weight:
+//   aggro  — jitter (see AGGRO_RADIUS below) tightens up at close range, so
+//            the ghost reliably turns onto the player instead of wandering past
+//   corner — paths by real shortest-grid-distance (BFS) instead of straight-line
+//            distance, so it doesn't get fooled by walls near the target
+//   burst  — periodically sprints when it gets close (see BURST_* below)
+// CLYDE and REAPER are left with the plain straight-line greedy behavior.
 const GHOST_DEFS = [
-  { name: 'BLINKY', color: 0xff2222, chase: 1.0 },   // pure hunter
-  { name: 'PINKY', color: 0xff44cc, chase: 0.85 },   // ambusher (targets ahead)
-  { name: 'INKY', color: 0x22ddff, chase: 0.75 },
+  { name: 'BLINKY', color: 0xff2222, chase: 1.0, behavior: 'aggro' },   // pure hunter
+  { name: 'PINKY', color: 0xff44cc, chase: 0.85, behavior: 'corner' },  // ambusher (targets ahead)
+  { name: 'INKY', color: 0x22ddff, chase: 0.75, behavior: 'corner' },
   { name: 'CLYDE', color: 0xff9922, chase: 0.6 },
-  { name: 'SPECTRE', color: 0x88ff44, chase: 0.9 },  // reinforcement @ 50%
-  { name: 'WRAITH', color: 0xff5500, chase: 0.95 },  // reinforcement @ 75%
+  { name: 'SPECTRE', color: 0x88ff44, chase: 0.9, behavior: 'burst' }, // reinforcement @ 50%
+  { name: 'WRAITH', color: 0xff5500, chase: 0.95, behavior: 'burst' }, // reinforcement @ 75%
   { name: 'REAPER', color: 0xaa00ff, chase: 1.0 },   // reinforcement @ 100%
 ];
 const BASE_GHOSTS = 4;
+// Max simultaneous ghosts (base 7 + clones) — keeps light/particle count and
+// clone chaos bounded.
+const GHOST_CAP = 10;
+// Chance a shot into a non-vulnerable ("immune") ghost splits off a clone.
+const CLONE_CHANCE = 0.35;
 // Chase-commitment multiplier: ghosts ease off (drop to 0.92x speed) less often,
-// so they pursue more relentlessly. Stacked: +18%, then another +15% on top
-// (1.18 * 1.15 ≈ +35.7% total). Commitment probability is still capped at 1.0.
-const AGGRO = 1.18 * 1.15;
-// Base chase speed, also boosted 15% on top of the original 3.4 units/s.
-const CHASE_SPEED = 3.4 * 1.15;
+// so they pursue more relentlessly. Commitment probability is still capped at
+// 1.0. Was stacked to 1.18 * 1.15 (+35.7%) while ghosts were still stuck near
+// their spawn (see the movement-freeze fix above) to compensate for them
+// barely moving. Now that they actually reach the player, that stacked value
+// reads as too relentless — dropped back to just the first +18% layer so
+// mid-pack ghosts (INKY, CLYDE, and now PINKY/SPECTRE/WRAITH too) fall back
+// under the cap and regain their speed-dropout variance.
+const AGGRO = 1.18;
+// Base chase speed. Was boosted 15% on top of the original 3.4 units/s for
+// the same stuck-ghost-compensation reason above; trimmed to +8% now that
+// movement actually works.
+const CHASE_SPEED = 3.4 * 1.08;
 // Extra speed multiplier at 100% pellet progress (e.g. 0.6 = up to +60% faster).
 const HUNT_SPEED_RAMP = 0.6;
 // World-unit radius within which a hunting ghost growls at the player, even
 // through walls — proximity dread without needing line of sight.
 const GROWL_RANGE = CELL * 3;
 const FRIGHT_COLOR = 0x2244ff;
+// 'aggro' behavior: within this radius, direction-choice jitter scales down
+// (to AGGRO_MIN_JITTER at the closest) so the ghost reliably turns onto the
+// player instead of the randomization drowning out the chase signal. Kept
+// above zero on purpose — reads as "alert", not unavoidable.
+const AGGRO_RADIUS = CELL * 2;
+const AGGRO_MIN_JITTER = 0.15;
+// 'burst' behavior: sprint speed multiplier, trigger radius, duration and
+// cooldown. Multiplier is capped well below what could tunnel through a
+// 1-cell-thick wall given the engine's dt clamp (game.js tick(), 0.05s max).
+const BURST_TRIGGER_RADIUS = CELL * 3;
+const BURST_SPEED_MUL = 1.7;
+const BURST_DURATION = 1.1;
+const BURST_COOLDOWN = 4.5;
 
 function buildGhostMesh(color) {
   const grp = new THREE.Group();
@@ -577,6 +639,27 @@ function buildGhostMesh(color) {
   return { grp, mat, fright };
 }
 
+// Shortest-path grid distance from (originR, originC) to every reachable cell,
+// for 'corner' behavior ghosts. The maze is small (21x21) and this only runs
+// at cell-center decision points, so a fresh BFS per decision is cheap.
+function bfsDistanceGrid(originR, originC) {
+  const dist = Array.from({ length: ROWS }, () => new Array(COLS).fill(Infinity));
+  if (isWall(originR, originC)) return dist;
+  dist[originR][originC] = 0;
+  const queue = [[originR, originC]];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const [r, c] = queue[qi];
+    const d = dist[r][c];
+    for (const [dr, dc] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const nr = r + dr, nc = c + dc;
+      if (isWall(nr, nc) || dist[nr][nc] !== Infinity) continue;
+      dist[nr][nc] = d + 1;
+      queue.push([nr, nc]);
+    }
+  }
+  return dist;
+}
+
 const trailGeo = new THREE.PlaneGeometry(0.7, 0.7);
 class Ghost {
   constructor(def, spawn, active = true) {
@@ -593,6 +676,7 @@ class Ghost {
     this.trailClock = 0;
     this.lastSafe = this.spawn.clone();
     this.growlCooldown = 0;
+    this.isClone = false; // identity flag, not touched by reset() — used to sweep clones on restart
     this.reset();
   }
   reset() {
@@ -602,6 +686,8 @@ class Ghost {
     this.deadTimer = 0;
     this.speed = CHASE_SPEED;
     this.growlCooldown = 0;
+    this.burstTimer = 0;
+    this.burstCooldown = 0;
     this.mesh.visible = this.active;
     this.applyLook(false);
   }
@@ -659,7 +745,19 @@ class Ghost {
     const commit = baseCommit + (1 - baseCommit) * progress;
     // Hunt speed also climbs with pellet progress, up to +60% at 100% cleared.
     const huntSpeedMul = 1 + progress * HUNT_SPEED_RAMP;
-    const speed = this.state === 'fright' ? 2.1 : this.speed * huntSpeedMul * (Math.random() < commit ? 1 : 0.92);
+    // 'burst' behavior: sprint for BURST_DURATION once the player is within
+    // range, then cool down before it can trigger again.
+    if (this.def.behavior === 'burst') {
+      this.burstCooldown = Math.max(0, this.burstCooldown - dt);
+      if (this.burstTimer > 0) {
+        this.burstTimer -= dt;
+      } else if (this.burstCooldown <= 0 && this.pos.distanceTo(player.pos) < BURST_TRIGGER_RADIUS) {
+        this.burstTimer = BURST_DURATION;
+        this.burstCooldown = BURST_COOLDOWN;
+      }
+    }
+    const burstMul = this.def.behavior === 'burst' && this.burstTimer > 0 ? BURST_SPEED_MUL : 1;
+    const speed = this.state === 'fright' ? 2.1 : this.speed * huntSpeedMul * burstMul * (Math.random() < commit ? 1 : 0.92);
     const cell = worldToCell(this.pos);
 
     // self-heal: if we've somehow ended up off-grid or inside a wall, snap back to
@@ -679,28 +777,51 @@ class Ghost {
     if (distToCenter < speed * dt * 1.5) {
       // choose new direction at cell center
       const target = this.targetPoint(player);
+      // 'corner' behavior: path by real shortest-grid-distance instead of
+      // straight-line distance, so walls near the target don't fool it into
+      // the wrong corner. Falls back to the player's own cell if the target
+      // point (e.g. PINKY's ambush lead) lands inside a wall.
+      let bfsGrid = null;
+      if (this.def.behavior === 'corner' && this.state !== 'fright' && target) {
+        let tc = worldToCell(target);
+        if (isWall(tc.r, tc.c)) tc = worldToCell(player.pos);
+        bfsGrid = bfsDistanceGrid(tc.r, tc.c);
+      }
+      // 'aggro' behavior: jitter shrinks as the player gets closer, so the
+      // ghost's own chase signal stops getting drowned out right when it
+      // matters most. Floored above zero — alert, not unavoidable.
+      const jitterMag = this.def.behavior === 'aggro'
+        ? 1.5 * Math.max(AGGRO_MIN_JITTER, Math.min(1, this.pos.distanceTo(player.pos) / AGGRO_RADIUS))
+        : 1.5;
       const options = [];
       const dirs = [[0, 1, 1, 0], [0, -1, -1, 0], [1, 0, 0, 1], [-1, 0, 0, -1]]; // dr,dc,dx,dz
       for (const [dr, dc, dx, dz] of dirs) {
-        if (isWall(cell.r + dr, cell.c + dc)) continue;
+        const nr = cell.r + dr, nc = cell.c + dc;
+        if (isWall(nr, nc)) continue;
         // avoid reversing unless forced
         if (dx === -Math.round(this.dir.x) && dz === -Math.round(this.dir.z) && Math.abs(dx) + Math.abs(dz) > 0) {
           options.push({ dx, dz, score: -Infinity });
           continue;
         }
-        const next = cellToWorld(cell.r + dr, cell.c + dc);
+        const next = cellToWorld(nr, nc);
         let score;
         if (this.state === 'fright') score = next.distanceTo(player.pos); // flee: farther is better
+        else if (bfsGrid) score = -(bfsGrid[nr][nc] === Infinity ? 999 : bfsGrid[nr][nc]) * CELL;
         else if (target) score = -next.distanceTo(target); // chase: closer is better
         else score = Math.random();
-        score += Math.random() * 1.5; // jitter so they don't stack
+        score += Math.random() * jitterMag; // jitter so they don't stack
         options.push({ dx, dz, score });
       }
       if (options.length) {
         options.sort((a, b) => b.score - a.score);
         const best = options[0].score === -Infinity ? options[options.length - 1] : options[0];
         this.dir.set(best.dx, 0, best.dz);
-        this.pos.copy(center);
+        // NOTE: deliberately not snapping pos to center here — this decision
+        // re-triggers every frame near a center (distToCenter after one step
+        // is always < the 1.5x threshold below), so resetting pos here made
+        // ghosts unable to advance more than ~1 frame's movement from any
+        // center. Position keeps advancing from wherever it actually is;
+        // the wall-collision fallback below still snaps to center if needed.
       } else {
         // boxed in (shouldn't happen in this maze, but guard anyway): reverse
         // rather than freeze, so a ghost is never stationary
@@ -764,6 +885,21 @@ class Ghost {
     spawnExplosion(this.pos.clone().setY(1.1), this.def.color);
     AudioSys.ghostDie();
   }
+}
+
+// Fully removes a ghost from the scene and frees its GPU resources — used to
+// sweep cloned ghosts on restart, since the base 7 are otherwise permanent.
+function disposeGhost(g) {
+  scene.remove(g.mesh);
+  g.mesh.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+      else obj.material.dispose();
+    }
+  });
+  for (const tp of g.trail) { scene.remove(tp); tp.material.dispose(); }
+  g.trail.length = 0;
 }
 
 // Build all 7 ghosts on the G cells. The first BASE_GHOSTS are active immediately;
@@ -1058,9 +1194,19 @@ function shoot() {
       player.score += 200;
       flashMsg('DEMON OBLITERATED  +200');
     } else {
-      // shot passes through — they are still ethereal
+      // shot passes through — they are still ethereal, but the impact can
+      // shear off a duplicate. Capped so the maze can't spiral out of control.
       spawnExplosion(hitGhost.mesh.position.clone(), 0xffffff, 12, 4);
-      flashMsg('IMMUNE — FIND A PLASMA CORE');
+      if (ghosts.length < GHOST_CAP && Math.random() < CLONE_CHANCE) {
+        const clone = new Ghost(hitGhost.def, hitGhost.pos.clone(), true);
+        clone.isClone = true;
+        ghosts.push(clone);
+        spawnExplosion(clone.pos.clone().setY(1.1), hitGhost.def.color, 24, 6);
+        AudioSys.clone();
+        flashMsg('DEMON CLONED!');
+      } else {
+        flashMsg('IMMUNE — FIND A PLASMA CORE');
+      }
     }
   } else if (wallHits.length) {
     spawnExplosion(wallHits[0].point, 0x66ffee, 14, 4);
@@ -1150,6 +1296,10 @@ function resetGame() {
   player.yaw = Math.PI; player.pitch = 0; player.invuln = 0; player.bumpCooldown = 0;
   pellets.forEach(p => (p.alive = true));
   cores.forEach(c => { c.alive = true; c.mesh.visible = true; c.light.intensity = 8; });
+  // sweep any clones spawned last run — the base 7 are the only permanent ghosts
+  for (let i = ghosts.length - 1; i >= 0; i--) {
+    if (ghosts[i].isClone) { disposeGhost(ghosts[i]); ghosts.splice(i, 1); }
+  }
   ghosts.forEach((g, i) => { g.active = i < BASE_GHOSTS; g.reset(); });
   game.pelletsLeft = pellets.length;
   game.reinforced = [false, false, false];
