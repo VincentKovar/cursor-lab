@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#02040a" />
+  <meta name="apple-mobile-web-app-title" content="Ast. Belt" />
+  <title>ASTEROID BELT</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-row hud-top">
+      <div class="hud-block">
+        <div class="hud-label">SCORE</div>
+        <div id="hud-score" class="hud-value">0</div>
+      </div>
+      <div class="hud-block center">
+        <div id="hud-multiplier" class="hud-mult">×1</div>
+      </div>
+      <div class="hud-block right">
+        <div class="hud-label">HI</div>
+        <div id="hud-hiscore" class="hud-value">0</div>
+      </div>
+    </div>
+    <div class="hud-row hud-bottom">
+      <div class="hud-block shield-block">
+        <div class="hud-label">FORCE FIELD</div>
+        <div class="shield-bar"><div id="hud-shield" class="shield-fill"></div></div>
+      </div>
+      <div class="hud-block right">
+        <div class="hud-label">WEAPON</div>
+        <div id="hud-weapon" class="hud-value weapon">PULSE LASER</div>
+        <div id="hud-weapon-timer" class="weapon-timer"><div id="hud-weapon-timer-fill"></div></div>
+      </div>
+    </div>
+    <div id="hud-banner" class="hidden"></div>
+  </div>
+
+  <!-- Title screen -->
+  <div id="title-screen" class="overlay">
+    <div class="title-art">
+      <h1>ASTEROID<br/>BELT</h1>
+      <div class="subtitle">// COSMIC GRAVEYARD RUN //</div>
+    </div>
+    <div class="instructions">
+      <p><span class="key">TILT</span> to steer &amp; aim</p>
+      <p><span class="key">TAP + HOLD</span> to fire</p>
+      <p class="desktop-hint"><span class="key">MOUSE</span> aims · <span class="key">CLICK / SPACE</span> fires</p>
+      <p class="dim">Big rocks fracture. Fragments fly faster.<br/>Grab the pods. Survive the belt.</p>
+    </div>
+    <button id="btn-start" class="btn-glow">ENGAGE</button>
+    <div id="gyro-status" class="gyro-status"></div>
+  </div>
+
+  <!-- Game over screen -->
+  <div id="gameover-screen" class="overlay hidden">
+    <h2>SHIP LOST</h2>
+    <div class="final-stats">
+      <div class="stat"><span class="hud-label">FINAL SCORE</span><span id="final-score" class="hud-value big">0</span></div>
+      <div class="stat"><span class="hud-label">SECTOR REACHED</span><span id="final-sector" class="hud-value">1</span></div>
+      <div class="stat"><span class="hud-label">ROCKS SHATTERED</span><span id="final-kills" class="hud-value">0</span></div>
+      <div id="new-hiscore" class="new-hiscore hidden">★ NEW HIGH SCORE ★</div>
+    </div>
+    <button id="btn-restart" class="btn-glow">RE-ENGAGE</button>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

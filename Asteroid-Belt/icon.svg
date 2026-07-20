@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#0c1c2e"/>
+      <stop offset="65%" stop-color="#050a14"/>
+      <stop offset="100%" stop-color="#02040a"/>
+    </radialGradient>
+    <filter id="glowC" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glowM" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- distant stars -->
+  <g fill="#7dfaff" opacity="0.55">
+    <circle cx="88" cy="96" r="2.4"/>
+    <circle cx="140" cy="360" r="1.8"/>
+    <circle cx="430" cy="120" r="2"/>
+    <circle cx="410" cy="330" r="1.6"/>
+    <circle cx="70" cy="260" r="1.6"/>
+    <circle cx="440" cy="410" r="2.2"/>
+  </g>
+
+  <!-- fractured asteroid, wireframe -->
+  <g filter="url(#glowC)" fill="#0a1622" stroke="#7dfaff" stroke-width="9" stroke-linejoin="round">
+    <polygon points="256,108 340,140 372,214 358,300 296,364 208,372 140,320 122,236 168,156 216,120"/>
+  </g>
+  <g stroke="#7dfaff" stroke-width="4" opacity="0.5" stroke-linecap="round">
+    <line x1="256" y1="108" x2="236" y2="240"/>
+    <line x1="122" y1="236" x2="236" y2="240"/>
+    <line x1="236" y1="240" x2="296" y2="364"/>
+    <line x1="236" y1="240" x2="372" y2="214"/>
+  </g>
+
+  <!-- ship dart cutting across the crack -->
+  <g filter="url(#glowM)" fill="#02040a" stroke="#ff7dfa" stroke-width="10" stroke-linejoin="round">
+    <polygon points="256,196 300,318 256,296 212,318"/>
+  </g>
+
+  <!-- reticle -->
+  <g stroke="#ffd166" stroke-width="7" fill="none" opacity="0.9" filter="url(#glowM)">
+    <circle cx="256" cy="256" r="48"/>
+    <line x1="256" y1="188" x2="256" y2="212"/>
+    <line x1="256" y1="300" x2="256" y2="324"/>
+    <line x1="188" y1="256" x2="212" y2="256"/>
+    <line x1="300" y1="256" x2="324" y2="256"/>
+  </g>
+</svg>
