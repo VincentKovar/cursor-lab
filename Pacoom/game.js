@@ -520,6 +520,8 @@ const BASE_GHOSTS = 4;
 const AGGRO = 1.18 * 1.15;
 // Base chase speed, also boosted 15% on top of the original 3.4 units/s.
 const CHASE_SPEED = 3.4 * 1.15;
+// Extra speed multiplier at 100% pellet progress (e.g. 0.6 = up to +60% faster).
+const HUNT_SPEED_RAMP = 0.6;
 // World-unit radius within which a hunting ghost growls at the player, even
 // through walls — proximity dread without needing line of sight.
 const GROWL_RANGE = CELL * 3;
@@ -633,7 +635,7 @@ class Ghost {
     if (this.def.name === 'INKY') t.add(new THREE.Vector3(Math.sin(perfNow() * 0.3) * CELL * 2, 0, Math.cos(perfNow() * 0.3) * CELL * 2));
     return t;
   }
-  update(dt, t, player, powerMode) {
+  update(dt, t, player, powerMode, progress = 0) {
     if (this.state === 'dead') {
       this.deadTimer -= dt;
       if (this.deadTimer <= 0) this.reset();
@@ -650,8 +652,14 @@ class Ghost {
         this.growlCooldown = 2.2 - proximity * 1.5; // closer -> growls more often
       }
     }
-    const commit = Math.min(1, this.def.chase * AGGRO); // +18% chase commitment
-    const speed = this.state === 'fright' ? 2.1 : this.speed * (Math.random() < commit ? 1 : 0.92);
+    // Chase commitment ramps from this ghost's base value up to a guaranteed
+    // 100% as the player clears more pellets ("lights") — by a fully-cleared
+    // maze, ghosts never ease off and always take the optimal chase direction.
+    const baseCommit = Math.min(1, this.def.chase * AGGRO);
+    const commit = baseCommit + (1 - baseCommit) * progress;
+    // Hunt speed also climbs with pellet progress, up to +60% at 100% cleared.
+    const huntSpeedMul = 1 + progress * HUNT_SPEED_RAMP;
+    const speed = this.state === 'fright' ? 2.1 : this.speed * huntSpeedMul * (Math.random() < commit ? 1 : 0.92);
     const cell = worldToCell(this.pos);
 
     // self-heal: if we've somehow ended up off-grid or inside a wall, snap back to
@@ -694,8 +702,9 @@ class Ghost {
         this.dir.set(best.dx, 0, best.dz);
         this.pos.copy(center);
       } else {
-        // boxed in (shouldn't happen in this maze, but guard anyway): hold position
-        this.dir.set(0, 0, 0);
+        // boxed in (shouldn't happen in this maze, but guard anyway): reverse
+        // rather than freeze, so a ghost is never stationary
+        this.dir.negate();
       }
     }
     // never step into a wall cell, regardless of timing/jitter
@@ -1321,10 +1330,11 @@ function tick() {
       hudEls.powerFill.style.width = `${(powerMode.timer / 10) * 100}%`;
       if (powerMode.timer <= 0) endPower();
     }
-    // ghosts
+    // ghosts — hunt harder the more of the maze the player has cleared
+    const pelletProgress = pellets.length ? 1 - game.pelletsLeft / pellets.length : 0;
     for (const g of ghosts) {
       if (!g.active) continue;
-      g.update(dt, t, player, powerMode);
+      g.update(dt, t, player, powerMode, pelletProgress);
       if (g.state === 'chase') {
         const d = g.pos.distanceTo(player.pos);
         if (d < 1.1) damagePlayer(GHOST_DAMAGE, g.pos);
